@@ -2,6 +2,7 @@ package steve_gall.minecolonies_compatibility.module.common.ae2;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.stream.Stream;
@@ -336,6 +337,8 @@ public class CitizenTerminalPart extends AbstractDisplayPart implements IStorage
 			this.calculationStartTick = tag.getLong("calculationStartTick");
 			this.lastProgressValue = tag.getLong("lastProgressValue");
 			this.noProgressChecks = tag.getInt("noProgressChecks");
+
+
 		}
 
 		public CompoundTag write(HolderLookup.Provider provider)
@@ -357,6 +360,7 @@ public class CitizenTerminalPart extends AbstractDisplayPart implements IStorage
 			tag.putLong("calculationStartTick", this.calculationStartTick);
 			tag.putLong("lastProgressValue", this.lastProgressValue);
 			tag.putInt("noProgressChecks", this.noProgressChecks);
+
 
 			return tag;
 		}
@@ -743,8 +747,8 @@ public class CitizenTerminalPart extends AbstractDisplayPart implements IStorage
 
 			for (var requestId : toRemove)
 			{
+				var removedHolder = this.tasks.remove(requestId);
 				var request = requestManager.getRequestForToken(requestId);
-				this.tasks.remove(requestId);
 
 				if (host != null)
 				{
@@ -814,6 +818,28 @@ public class CitizenTerminalPart extends AbstractDisplayPart implements IStorage
 							return false;
 						}
 
+						if (plan.simulation())
+						{
+							// Build a "MISSING: item x count, ..." string so the player knows what to
+							// supply directly to the AE2 network. The builder waits (return true keeps
+							// the NetworkCrafting child alive). Recalculation happens every few ticks;
+							// once the missing items arrive in AE2 the plan will succeed and crafting starts.
+							var missing = new StringBuilder();
+
+							for (var missingEntry : plan.missingItems())
+							{
+								if (missingEntry.getKey() instanceof AEItemKey missingKey)
+								{
+									if (missing.length() > 0) missing.append(", ");
+									missing.append(missingKey.toStack(1).getHoverName().getString());
+									missing.append(" x").append(missingEntry.getLongValue());
+								}
+							}
+
+							networkCrafting.setText(Component.literal(missing.length() > 0 ? "MISSING: " + missing : "RESOURCE MISSING"));
+							return true;
+						}
+
 						var result = grid.getCraftingService().submitJob(plan, CitizenTerminalPart.this, null, false, action);
 
 						if (result != null && result.successful())
@@ -829,13 +855,11 @@ public class CitizenTerminalPart extends AbstractDisplayPart implements IStorage
 							{
 								networkCrafting.setText(Component.literal("ERROR: SUBMISSION_FAILED"));
 							}
-
 						}
 						else
 						{
 							networkCrafting.setText(Component.literal("ERROR: " + result.errorCode()));
 						}
-
 					}
 					catch (Exception e)
 					{
@@ -919,7 +943,7 @@ public class CitizenTerminalPart extends AbstractDisplayPart implements IStorage
 	@Override
 	public ImmutableSet<ICraftingLink> getRequestedJobs()
 	{
-		return ImmutableSet.copyOf(this.view.tasks.values().stream().map(taskHolder -> taskHolder.getCraftingLink()).toArray(ICraftingLink[]::new));
+		return ImmutableSet.copyOf(this.view.tasks.values().stream().map(taskHolder -> taskHolder.getCraftingLink()).filter(link -> link != null).toArray(ICraftingLink[]::new));
 	}
 
 	@Override

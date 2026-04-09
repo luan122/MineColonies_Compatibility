@@ -173,6 +173,38 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = "UTF-8"
 }
 
+def injectVSCodeAttachConfig = tasks.register('injectVSCodeAttachConfig') {
+    description = 'Injects the remote attach debug configuration into .vscode/launch.json'
+    def launchFile = file('.vscode/launch.json')
+    outputs.file(launchFile)
+
+    doLast {
+        if (!launchFile.exists()) return
+
+        def content = launchFile.text
+        if (content.contains('"Attach to Minecraft"')) return
+
+        def attachConfig = '''\
+    {
+      "type": "java",
+      "request": "attach",
+      "name": "Attach to Minecraft",
+      "presentation": {
+        "group": "NG - MineColonies_Compatibility",
+        "order": 99
+      },
+      "hostName": "localhost",
+      "port": 5005
+    },'''
+
+        // Insert after the opening [ of "configurations"
+        def patched = content.replaceFirst(/"configurations"\s*:\s*\[/, "\"configurations\": [\n${attachConfig}")
+        launchFile.text = patched
+    }
+}
+
+tasks.named('build').configure { finalizedBy injectVSCodeAttachConfig }
+
 jar {
     if (project.hasProperty("buildWithSource")) {
         from sourceSets.main.java
